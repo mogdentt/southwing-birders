@@ -1,57 +1,96 @@
 import localforage from "localforage"
 
 /**
- * Bird photos come from each species' Wikipedia article via the REST summary
- * endpoint (CORS-enabled, freely licensed images). Thumbnail URLs are cached
- * in IndexedDB so repeat visits and offline use are instant.
+ * Bird photos come from each species' Wikipedia article via the MediaWiki
+ * Action API (the CORS-safe `origin=*` endpoint, designed for browser use).
+ * Requests are batched (up to 50 titles per call) and results are cached in
+ * IndexedDB so repeat visits and offline use are instant.
  */
 
 const cache = localforage.createInstance({ name: "southwing-photos" })
-const inflight = new Map<string, Promise<string | null>>()
 
 export interface WikiInfo {
   thumb: string | null
   pageUrl: string | null
 }
 
-export async function getPhoto(wikiTitle: string): Promise<string | null> {
-  const info = await getWikiInfo(wikiTitle)
-  return info.thumb
+interface Waiter {
+  resolve: (thumb: string | null) => void
+  promise: Promise<string | null>
+}
+
+const pending = new Map<string, Waiter>()
+let flushTimer: number | undefined
+
+function enqueue(title: string): Promise<string | null> {
+  const existing = pending.get(title)
+  if (existing) return existing.promise
+  let resolve!: (t: string | null) => void
+  const promise = new Promise<string | null>((r) => {
+    resolve = r
+  })
+  pending.set(title, { resolve, promise })
+  if (flushTimer === undefined) flushTimer = window.setTimeout(flush, 40)
+  return promise
+}
+
+async function flush(): Promise<void> {
+  flushTimer = undefined
+  const batch = Array.from(pending.entries()).slice(0, 50)
+  for (const [t] of batch) pending.delete(t)
+  if (pending.size > 0) flushTimer = window.setTimeout(flush, 40)
+
+  const titles = batch.map(([t]) => t)
+  const results = new Map<string, string | null>()
+  try {
+    const url =
+      "https://en.wikipedia.org/w/api.php" +
+      "?action=query&format=json&formatversion=2&origin=*&redirects=1" +
+      "&prop=pageimages&piprop=thumbnail&pithumbsize=640" +
+      "&titles=" +
+      encodeURIComponent(titles.join("|"))
+    const res = await fetch(url)
+    if (res.ok) {
+      const json = await res.json()
+      const q = json?.query
+      const normalized = new Map<string, string>()
+      for (const n of q?.normalized ?? []) normalized.set(n.from, n.to)
+      const redirects = new Map<string, string>()
+      for (const r of q?.redirects ?? []) redirects.set(r.from, r.to)
+      const thumbs = new Map<string, string | null>()
+      for (const p of q?.pages ?? []) thumbs.set(p.title, p?.thumbnail?.source ?? null)
+      for (const t of titles) {
+        let final = normalized.get(t) ?? t
+        for (let hop = 0; hop < 3 && redirects.has(final); hop++) final = redirects.get(final)!
+        results.set(t, thumbs.get(final) ?? null)
+      }
+    }
+  } catch {
+    // offline or blocked: resolve everyone with null, but cache nothing
+  }
+
+  for (const [title, waiter] of batch) {
+    if (results.has(title)) {
+      // definitive answer from the API (photo URL, or confirmed no image)
+      const info: WikiInfo = { thumb: results.get(title) ?? null, pageUrl: pageUrlFor(title) }
+      void cache.setItem(`wiki2:${title}`, info)
+      waiter.resolve(info.thumb)
+    } else {
+      waiter.resolve(null)
+    }
+  }
 }
 
 export async function getWikiInfo(wikiTitle: string): Promise<WikiInfo> {
-  const key = `wiki:${wikiTitle}`
-  const stored = await cache.getItem<WikiInfo>(key)
+  const stored = await cache.getItem<WikiInfo>(`wiki2:${wikiTitle}`)
   if (stored) return stored
-
-  if (inflight.has(key)) {
-    const thumb = await inflight.get(key)!
-    return { thumb, pageUrl: pageUrlFor(wikiTitle) }
-  }
-
-  const p = (async (): Promise<string | null> => {
-    try {
-      const res = await fetch(
-        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitle)}`,
-        { headers: { Accept: "application/json" } }
-      )
-      if (!res.ok) return null
-      const json = await res.json()
-      let thumb: string | null = json?.thumbnail?.source ?? null
-      // ask for a bigger rendition than the default tiny thumb
-      if (thumb) thumb = thumb.replace(/\/(\d+)px-/, "/640px-")
-      const info: WikiInfo = { thumb, pageUrl: json?.content_urls?.desktop?.page ?? pageUrlFor(wikiTitle) }
-      await cache.setItem(key, info)
-      return thumb
-    } catch {
-      return null
-    }
-  })()
-
-  inflight.set(key, p)
-  const thumb = await p
-  inflight.delete(key)
+  const thumb = await enqueue(wikiTitle)
   return { thumb, pageUrl: pageUrlFor(wikiTitle) }
+}
+
+export async function getPhoto(wikiTitle: string): Promise<string | null> {
+  const info = await getWikiInfo(wikiTitle)
+  return info.thumb
 }
 
 export function pageUrlFor(wikiTitle: string): string {

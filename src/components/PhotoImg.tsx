@@ -28,7 +28,15 @@ export function PhotoImg({ species, className }: { species: Species; className?:
   return (
     <div className={`photo ${loading ? "loading" : ""} ${className ?? ""}`}>
       {url ? (
-        <img src={url} alt={species.name} loading="lazy" />
+        <img
+          src={url}
+          alt={species.name}
+          loading="lazy"
+          onError={() => {
+            urlCache.set(species.id, null)
+            setUrl(null)
+          }}
+        />
       ) : !loading ? (
         <div className="fallback">
           <GroupSilhouette group={species.group} />

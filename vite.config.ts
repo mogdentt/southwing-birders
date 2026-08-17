@@ -35,7 +35,8 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'bird-photos',
-              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 90 }
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] }
             }
           },
           {
@@ -43,7 +44,8 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'map-tiles',
-              expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 }
+              expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] }
             }
           }
         ]
