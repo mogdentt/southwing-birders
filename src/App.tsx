@@ -103,7 +103,7 @@ export default function App() {
             <span className="fab">
               <IconPlus />
             </span>
-            <span>Log</span>
+            <span className="fab-label">Log</span>
           </NavLink>
           <NavLink to="/map" className={({ isActive }) => (isActive ? "active" : "")}>
             <IconMap />
