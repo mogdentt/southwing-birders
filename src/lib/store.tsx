@@ -4,25 +4,9 @@ import type { AppData, Sighting, Outing, Settings, QuizStats, BadgeContext } fro
 import { SPECIES, speciesById, RARITY_POINTS } from "../data/species"
 import { BADGES } from "../data/badges"
 import { uid, nowISO, dayKey } from "./util"
+import { createEmptyData, parseBackup, validateBackup } from "./backup"
 
 const KEY = "southwing-data-v1"
-
-const DEFAULT_SETTINGS: Settings = {
-  name: "",
-  theme: "auto",
-  ebirdKey: "",
-  homeLat: -43.5321,
-  homeLng: 172.6362,
-}
-
-const EMPTY: AppData = {
-  v: 1,
-  sightings: [],
-  outings: [],
-  settings: DEFAULT_SETTINGS,
-  quiz: { played: 0, correct: 0, bestStreak: 0 },
-  unlockedBadges: {},
-}
 
 export interface LogResult {
   isLifer: boolean
@@ -33,6 +17,7 @@ export interface LogResult {
 
 interface StoreValue {
   ready: boolean
+  storageError: string | null
   data: AppData
   lifeList: Map<string, Sighting>
   points: number
@@ -89,25 +74,75 @@ export function computePoints(lifeList: Map<string, Sighting>): number {
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<AppData>(EMPTY)
+  const [data, setData] = useState<AppData>(createEmptyData)
   const [ready, setReady] = useState(false)
-  const saveTimer = useRef<number | undefined>(undefined)
+  const [storageError, setStorageError] = useState<string | null>(null)
+  const current = useRef(data)
+  const loaded = useRef(false)
+  const protectStoredData = useRef(false)
+  const writeQueue = useRef<Promise<void>>(Promise.resolve())
+  const pendingWrites = useRef(0)
+  const unsaved = useRef(false)
 
   useEffect(() => {
-    localforage
-      .getItem<AppData>(KEY)
-      .then((stored) => {
-        if (stored && stored.v === 1) setData({ ...EMPTY, ...stored, settings: { ...DEFAULT_SETTINGS, ...stored.settings } })
-      })
-      .finally(() => setReady(true))
+    let cancelled = false
+    async function load() {
+      try {
+        const stored = await localforage.getItem<unknown>(KEY)
+        if (cancelled) return
+        const next = stored === null ? createEmptyData() : validateBackup(stored)
+        current.current = next
+        setData(next)
+      } catch (error) {
+        if (cancelled) return
+        protectStoredData.current = true
+        const detail = error instanceof Error ? ` ${error.message}` : ""
+        setStorageError(`Saved data could not be loaded.${detail} Existing browser data has not been overwritten. Any new work stays only in this tab: download a backup before leaving. Reload to retry loading, or restore a validated backup to explicitly replace the saved data.`)
+      } finally {
+        if (!cancelled) {
+          loaded.current = true
+          setReady(true)
+        }
+      }
+    }
+    void load()
+    return () => { cancelled = true }
   }, [])
 
-  const persist = useCallback((next: AppData) => {
+  useEffect(() => {
+    const warnIfUnsaved = (event: BeforeUnloadEvent) => {
+      if (!pendingWrites.current && !unsaved.current) return
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warnIfUnsaved)
+    return () => window.removeEventListener("beforeunload", warnIfUnsaved)
+  }, [])
+
+  const persist = useCallback((next: AppData, replaceProtectedData = false) => {
+    if (!loaded.current) return
+    current.current = next
     setData(next)
-    window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(() => {
-      localforage.setItem(KEY, next)
-    }, 250)
+    unsaved.current = true
+    // A failed initial read must never be followed by an automatic write of empty data.
+    // Only an explicitly confirmed restore may replace that protected stored value.
+    if (replaceProtectedData) protectStoredData.current = false
+    if (protectStoredData.current) return
+    pendingWrites.current++
+    // No debounce: every update is queued immediately, in order, even on navigation.
+    writeQueue.current = writeQueue.current.then(async () => {
+      try {
+        await localforage.setItem(KEY, next)
+        if (current.current === next) {
+          unsaved.current = false
+          setStorageError(null)
+        }
+      } catch {
+        setStorageError("Changes could not be saved to this browser. Storage may be full or unavailable. Keep this tab open and download a backup now before reloading or closing it. A later edit or confirmed restore will retry saving.")
+      } finally {
+        pendingWrites.current--
+      }
+    })
   }, [])
 
   const lifeList = useMemo(() => computeLifeList(data.sightings), [data.sightings])
@@ -141,6 +176,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const addSighting = useCallback(
     (s: Omit<Sighting, "id">): LogResult => {
+      const data = current.current
       const sighting: Sighting = { ...s, id: uid() }
       const isLifer = !data.sightings.some((x) => x.speciesId === s.speciesId)
       const sp = speciesById.get(s.speciesId)
@@ -154,27 +190,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         speciesName: sp?.name ?? s.speciesId,
       }
     },
-    [data, evaluateBadges, persist]
+    [evaluateBadges, persist]
   )
 
   const deleteSighting = useCallback(
     (id: string) => {
+      const data = current.current
       persist({ ...data, sightings: data.sightings.filter((s) => s.id !== id) })
     },
-    [data, persist]
+    [persist]
   )
 
   const startOuting = useCallback(
     (name: string, hotspotId?: string): Outing => {
+      const data = current.current
       const outing: Outing = { id: uid(), name, hotspotId, startISO: nowISO() }
       persist({ ...data, outings: [...data.outings, outing] })
       return outing
     },
-    [data, persist]
+    [persist]
   )
 
   const endOuting = useCallback(
     (id: string) => {
+      const data = current.current
       const next0: AppData = {
         ...data,
         outings: data.outings.map((o) => (o.id === id ? { ...o, endISO: nowISO() } : o)),
@@ -182,19 +221,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { data: next } = evaluateBadges(next0)
       persist(next)
     },
-    [data, evaluateBadges, persist]
+    [evaluateBadges, persist]
   )
 
   const updateSettings = useCallback(
     (patch: Partial<Settings>) => {
+      const data = current.current
       persist({ ...data, settings: { ...data.settings, ...patch } })
     },
-    [data, persist]
+    [persist]
   )
 
   const recordQuiz = useCallback(
     (correct: boolean, streakNow: number) => {
+      const data = current.current
       const quiz: QuizStats = {
+        ...data.quiz,
         played: data.quiz.played + 1,
         correct: data.quiz.correct + (correct ? 1 : 0),
         bestStreak: Math.max(data.quiz.bestStreak, streakNow),
@@ -202,27 +244,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { data: next } = evaluateBadges({ ...data, quiz })
       persist(next)
     },
-    [data, evaluateBadges, persist]
+    [evaluateBadges, persist]
   )
 
-  const exportJSON = useCallback(() => JSON.stringify(data, null, 2), [data])
+  const exportJSON = useCallback(() => {
+    if (!loaded.current) throw new Error("Data is still loading. Please wait before downloading a backup.")
+    return JSON.stringify(current.current, null, 2)
+  }, [])
 
   const importData = useCallback(
     (raw: string): { ok: boolean; message: string } => {
+      if (!loaded.current) return { ok: false, message: "Data is still loading. Please wait before restoring a backup." }
       try {
-        const parsed = JSON.parse(raw)
-        if (!parsed || !Array.isArray(parsed.sightings)) return { ok: false, message: "That file does not look like a Southwing backup." }
-        const next: AppData = { ...EMPTY, ...parsed, v: 1, settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) } }
-        persist(next)
-        return { ok: true, message: `Imported ${next.sightings.length} sightings.` }
-      } catch {
-        return { ok: false, message: "Could not read that file as JSON." }
+        const next = parseBackup(raw)
+        persist(next, true)
+        return { ok: true, message: `Restored ${next.sightings.length} sightings and ${next.outings.length} outings. Saving to this browser in the background; keep your backup file.` }
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "Could not restore that backup. No data has been changed." }
       }
     },
     [persist]
   )
 
   const loadDemo = useCallback(() => {
+    const data = current.current
     const now = new Date()
     const mk = (speciesId: string, daysAgo: number, hour: number, hotspotId: string, count = 1): Sighting => {
       const d = new Date(now)
@@ -259,14 +304,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ]
     const { data: next } = evaluateBadges({ ...data, sightings: [...data.sightings, ...demo] })
     persist(next)
-  }, [data, evaluateBadges, persist])
+  }, [evaluateBadges, persist])
 
   const resetAll = useCallback(() => {
-    persist({ ...EMPTY, settings: { ...DEFAULT_SETTINGS, ...data.settings } })
-  }, [persist, data.settings])
+    persist({ ...createEmptyData(), settings: { ...current.current.settings } })
+  }, [persist])
 
   const value: StoreValue = {
     ready,
+    storageError,
     data,
     lifeList,
     points,
@@ -284,7 +330,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     resetAll,
   }
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  return (
+    <Ctx.Provider value={value}>
+      {storageError && (
+        <div className="shell">
+          <div className="card" role="alert" style={{ border: "1px solid var(--red)", marginTop: 16 }}>
+            <h2>Protect your birding data</h2>
+            <p>{storageError}</p>
+            <a href="#/settings">Open backup and restore</a>
+          </div>
+        </div>
+      )}
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function useStore(): StoreValue {

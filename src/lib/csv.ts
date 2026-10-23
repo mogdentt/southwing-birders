@@ -26,12 +26,12 @@ export function toEbirdCSV(sightings: Sighting[]): string {
       speciesEpithet, // Species
       String(s.count || "X"), // Number
       s.notes ?? "", // Species Comments
-      hs?.name ?? "Christchurch", // Location Name
+      hs?.name ?? "Across Aotearoa", // Unknown location: do not invent a city
       String(lat), // Latitude
       String(lng), // Longitude
       date, // Observation date MM/DD/YYYY
       time, // Start time
-      "Canterbury", // State/Province
+      hs?.region ?? "", // State/Province: known hotspot only, never guess from GPS
       "NZ", // Country code
       "incidental", // Protocol
       "1", // Number of observers
@@ -47,7 +47,7 @@ export function toEbirdCSV(sightings: Sighting[]): string {
 }
 
 function csvCell(v: string): string {
-  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`
+  if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`
   return v
 }
 

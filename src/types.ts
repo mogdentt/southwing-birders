@@ -25,6 +25,8 @@ export interface Species {
   idTips: string
   fact: string
   wiki: string // Wikipedia page title for photo + link
+  range?: string // National distribution; not a live sighting or access guarantee
+  nzbo?: string // Verified NZ Birds Online species account
 }
 
 export interface Hotspot {
@@ -34,6 +36,7 @@ export interface Hotspot {
   lat: number
   lng: number
   kind: 'wetland' | 'estuary' | 'park' | 'forest' | 'coast' | 'river' | 'lake'
+  region?: string // Catalogue only; does not change stored sightings or backups
   blurb: string
   tips: string
   targets: string[] // species ids

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { SPECIES, speciesById } from "../data/species"
 import { HOTSPOTS, hotspotById } from "../data/hotspots"
@@ -28,29 +28,37 @@ export default function Log() {
   const [hotspotId, setHotspotId] = useState<string | undefined>(activeOuting?.hotspotId)
   const [when, setWhen] = useState(() => nowISO().slice(0, 16))
   const [notes, setNotes] = useState("")
+  const dateRef = useRef<HTMLInputElement>(null)
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
+  const locationChosen = useRef(Boolean(activeOuting?.hotspotId))
   const [liferOf, setLiferOf] = useState<{ sp: Species; badges: string[] } | null>(null)
 
   useEffect(() => {
     if (!navigator.geolocation) return
+    let alive = true
     navigator.geolocation.getCurrentPosition(
-      (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => { if (alive) setPos({ lat: p.coords.latitude, lng: p.coords.longitude }) },
       () => {},
       { maximumAge: 120000, timeout: 4000 }
     )
+    return () => { alive = false }
   }, [])
 
   // nearest hotspots first
   const rankedHotspots = useMemo(() => {
     const list = [...HOTSPOTS]
     if (pos) list.sort((a, b) => distKm(pos.lat, pos.lng, a.lat, a.lng) - distKm(pos.lat, pos.lng, b.lat, b.lng))
+    else list.sort((a, b) => `${a.region} ${a.name}`.localeCompare(`${b.region} ${b.name}`, "en-NZ"))
     return list
   }, [pos])
 
   useEffect(() => {
-    if (!hotspotId && pos && rankedHotspots.length) {
+    if (!locationChosen.current && !hotspotId && pos && rankedHotspots.length) {
       const nearest = rankedHotspots[0]
-      if (distKm(pos.lat, pos.lng, nearest.lat, nearest.lng) < 3) setHotspotId(nearest.id)
+      if (distKm(pos.lat, pos.lng, nearest.lat, nearest.lng) < 3) {
+        setHotspotId(nearest.id)
+        locationChosen.current = true
+      }
     }
   }, [pos, rankedHotspots, hotspotId])
 
@@ -79,25 +87,30 @@ export default function Log() {
       .slice(0, 12)
   }, [q])
 
+  const suggestedHotspot = hotspotId ? hotspotById.get(hotspotId) : undefined
   const suggestions = useMemo(() => {
     const month = new Date().getMonth() + 1
-    const near = hotspotId ? hotspotById.get(hotspotId) : pos ? rankedHotspots[0] : undefined
-    const pool = near
-      ? near.targets.map((id) => speciesById.get(id)!).filter(Boolean)
-      : SPECIES.filter((s) => s.rarity === "common")
+    // Without a selected local patch, never suggest the nearest distant sanctuary
+    // or every "common" species (which can include geographically restricted birds).
+    const ids = suggestedHotspot?.targets ?? ["tauhou", "house-sparrow", "blackbird", "starling", "mallard", "tarapunga"]
+    const pool = ids.map((id) => speciesById.get(id)!).filter(Boolean)
     return pool.filter((s) => !s.months || s.months.includes(month)).slice(0, 6)
-  }, [hotspotId, pos, rankedHotspots])
+  }, [suggestedHotspot])
 
   function save() {
     if (!species) return
+    if (!dateRef.current?.reportValidity()) return
     const dateISO = when.length === 16 ? `${when}:00` : when
+    const hotspot = hotspotId ? hotspotById.get(hotspotId) : undefined
+    // A manually selected distant hotspot must not inherit the device's home GPS.
+    const coords = hotspot && (!pos || distKm(pos.lat, pos.lng, hotspot.lat, hotspot.lng) >= 3) ? hotspot : pos
     const res = addSighting({
       speciesId: species.id,
       count,
       dateISO,
       hotspotId,
-      lat: pos?.lat,
-      lng: pos?.lng,
+      lat: coords?.lat,
+      lng: coords?.lng,
       notes: notes.trim() || undefined,
       outingId: activeOuting?.id,
     })
@@ -138,6 +151,7 @@ export default function Log() {
             autoFocus
             className="input"
             placeholder="Start typing a bird…"
+            aria-label="Search for a bird to log"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -165,8 +179,9 @@ export default function Log() {
               </>
             )}
             <div className="section-title">
-              <h2>{hotspotId || pos ? "Likely here right now" : "Likely in Christchurch now"}</h2>
+              <h2>{suggestedHotspot ? `Birds at ${suggestedHotspot.name}` : "Across Aotearoa"}</h2>
             </div>
+            <p className="tiny">{suggestedHotspot ? "Seasonal suggestions, not guaranteed sightings." : "Familiar birds to start with, not a prediction for your location. Search for any other species."}</p>
             <div className="card" style={{ padding: 6 }}>
               {suggestions.map((sp) => (
                 <SpeciesRow key={sp.id} sp={sp} seen={lifeList.has(sp.id)} onClick={() => setSpecies(sp)} />
@@ -219,21 +234,21 @@ export default function Log() {
 
         <label className="field">
           <span>Where?</span>
-          <select className="input" value={hotspotId ?? ""} onChange={(e) => setHotspotId(e.target.value || undefined)}>
-            <option value="">No hotspot (just my GPS spot)</option>
+          <select className="input" value={hotspotId ?? ""} onChange={(e) => { locationChosen.current = true; setHotspotId(e.target.value || undefined) }}>
+            <option value="">{pos ? "No hotspot — current GPS location" : "Across Aotearoa — no location set"}</option>
             {rankedHotspots.map((h) => (
               <option key={h.id} value={h.id}>
-                {h.name}
+                {h.name} · {h.region}
                 {pos ? ` · ${distKm(pos.lat, pos.lng, h.lat, h.lng).toFixed(1)} km` : ""}
               </option>
             ))}
           </select>
-          <div className="tiny mt8">{pos ? "GPS locked on. Your exact spot is saved too." : "No GPS fix; pick a hotspot."}</div>
+          <div className="tiny mt8">{hotspotId ? "The selected hotspot is saved; a nearby GPS fix refines its position, otherwise the hotspot pin is used." : pos ? "Your current GPS position will be saved. For an earlier sighting elsewhere, choose its hotspot instead." : "No GPS fix. Choose a hotspot, or leave location unset; no city is assumed."}</div>
         </label>
 
         <label className="field">
           <span>When?</span>
-          <input className="input" type="datetime-local" value={when} max={toLocalISO(new Date()).slice(0, 16)} onChange={(e) => setWhen(e.target.value)} />
+          <input ref={dateRef} className="input" type="datetime-local" required value={when} max={toLocalISO(new Date()).slice(0, 16)} onChange={(e) => setWhen(e.target.value)} />
         </label>
 
         <label className="field" style={{ marginBottom: 0 }}>

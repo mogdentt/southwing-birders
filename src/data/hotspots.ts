@@ -1,7 +1,10 @@
 import type { Hotspot } from "../types"
+import { NATIONAL_HOTSPOTS } from "./hotspots-national"
+
+export { HOTSPOT_VISITOR_LINKS } from "./hotspots-national"
 
 // Coordinates are approximate car-park / main-entrance locations.
-export const HOTSPOTS: Hotspot[] = [
+const LEGACY_HOTSPOTS: Hotspot[] = [
   {
     id: "travis",
     name: "Travis Wetland",
@@ -10,8 +13,8 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.6905,
     kind: "wetland",
     blurb: "The city's flagship freshwater wetland: 120 hectares of ponds, raupō and wet pasture in the middle of suburbia, with a loop track and bird hide.",
-    tips: "Dawn and dusk are magic. Walk the full loop, linger at the hide, and give the rank rushes time for fernbird and crakes. Spring evenings can produce booming bittern.",
-    targets: ["matata", "matuku", "marsh-crake", "spotless-crake", "kuruwhengi", "tete", "pukeko", "royal-spoonbill"],
+    tips: "Use the public loop and bird hide, especially early or late in the day. Listen from the track without playback; never enter reedbeds or follow secretive birds into cover. Check council track notices and leave dogs at home.",
+    targets: ["matata", "kuruwhengi", "tete", "pukeko", "royal-spoonbill"],
   },
   {
     id: "estuary",
@@ -21,8 +24,8 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.733,
     kind: "estuary",
     blurb: "Christchurch's international airport for birds. Nearly 900 hectares of tidal flats hosting thousands of waders, gulls, terns and waterfowl within sight of the city.",
-    tips: "Work the two hours either side of high tide when birds concentrate at roosts. Southshore Spit, Sandy Point and the Bromley corner are the classic vantage points. Bring a scope if you have one.",
-    targets: ["kuaka", "huahou", "sipo", "poaka", "taranui", "royal-spoonbill", "kotuku", "ngutuparore"],
+    tips: "Watch from public shore paths within two hours of high tide. Bring a scope and stay well back from roosts; do not cross mudflats, channels or nesting fences to get closer.",
+    targets: ["kuaka", "huahou", "sipo", "poaka", "taranui", "royal-spoonbill"],
   },
   {
     id: "bromley",
@@ -30,9 +33,9 @@ export const HOTSPOTS: Hotspot[] = [
     lat: -43.5285,
     lng: 172.702,
     kind: "wetland",
-    blurb: "The treatment ponds beside the estuary are a magnet for waterfowl in serious numbers, plus a knack for turning up the genuinely weird.",
-    tips: "View from the walkway along the estuary edge and Sandy Point. Scan every duck raft twice; scarce species hide in the shoveler and teal flocks. Glossy ibis and odd waders have a habit of appearing here.",
-    targets: ["kuruwhengi", "tete", "papango", "royal-spoonbill", "poaka", "glossy-ibis", "tarapuka"],
+    blurb: "The treatment ponds beside the estuary attract large waterfowl flocks. The operating treatment plant itself is not public visitor space.",
+    tips: "View only from open public estuary-edge paths and signed viewing areas. Do not enter treatment works or cross locked gates. Scan waterfowl with a scope and check council notices for path closures.",
+    targets: ["kuruwhengi", "tete", "papango", "royal-spoonbill", "poaka", "tarapuka"],
   },
   {
     id: "charlesworth",
@@ -72,7 +75,7 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.5985,
     kind: "forest",
     blurb: "Six hundred years of kahikatea floodplain forest behind a predator-proof fence, ten minutes from town. The closest thing to pre-human Canterbury lowland.",
-    tips: "Walk it slowly and quietly; the birds are at eye level. Grey warbler, fantail and kererū are guaranteed, morepork roost here, and it is the best city site for hearing the spring cuckoo.",
+    tips: "Walk slowly and quietly on the formed paths during posted opening hours. Look for feeding kererū and listen for warblers; nothing is guaranteed. Respect the predator-proof gates, leave pets outside and do not search for daytime owl roosts.",
     targets: ["kereru", "riroriro", "piwakawaka", "pipiwharauroa", "ruru", "korimako"],
   },
   {
@@ -94,8 +97,8 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.702,
     kind: "estuary",
     blurb: "A long sheltered lagoon between the Waimakariri mouth and the sea, loved by spoonbills, godwits and terns and much less watched than the big estuary.",
-    tips: "View from Spencer Park side or Harbour Road. The southern end at high tide holds the roosts. Often produces white heron in winter.",
-    targets: ["royal-spoonbill", "kotuku", "kuaka", "taranui", "voc", "little-egret"],
+    tips: "View from open public paths on the Spencer Park side or Harbour Road. Bring a scope at high tide and keep well back from roosts. Do not cross tidal channels or enter fenced restoration areas.",
+    targets: ["royal-spoonbill", "kuaka", "taranui", "voc", "white-faced-heron"],
   },
   {
     id: "waimak",
@@ -104,7 +107,7 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.701,
     kind: "river",
     blurb: "Where the great braided river meets Pegasus Bay. Gull and tern colonies, wader passage and a wild shingle feel minutes from Kaiapoi.",
-    tips: "Walk out from Kairaki. Check tern flocks carefully for black-fronted among the white-fronted, and the shingle for dotterels. Winter storms bring seabirds close inshore.",
+    tips: "View from public access at Kairaki, staying outside marked bird-protection areas. Never walk through shingle colonies or drive on nesting habitat. Avoid the river mouth in floods or heavy surf; do not cross river channels.",
     targets: ["tarapirohe", "tarapuka", "pohowera", "black-fronted-dotterel", "tara", "karoro"],
   },
   {
@@ -145,7 +148,7 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.562,
     kind: "park",
     blurb: "Old quarry faces, ponds and shelter belts at the foot of the Port Hills, where farmland birds meet the bush edge.",
-    tips: "Circle the quarry rim for little owl in the crevices and macrocarpas, and check the scrubby gullies for cirl bunting among the yellowhammers.",
+    tips: "Use the marked quarry-rim and garden paths, keeping back from steep faces. Watch the scrub edges for small birds; never investigate cavities or disturb roosting owls. Follow posted dog and track rules.",
     targets: ["little-owl", "cirl-bunting", "yellowhammer", "california-quail", "korimako"],
   },
   {
@@ -176,7 +179,7 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.802,
     kind: "coast",
     blurb: "Wild headland cliffs at the harbour mouth: the city's seawatching station and a front-row seat to Pegasus Bay's seabird traffic.",
-    tips: "An onshore or southerly wind pushes birds close; give it an hour with binoculars from the gun emplacements. Spotted shags stream past constantly, and summer brings shearwaters in thousands.",
+    tips: "Seawatch only from open public track viewpoints, away from cliff edges. Check DOC alerts: battery buildings and surrounding areas may be closed for asbestos or other hazards. Never enter fenced emplacements. Bring windproof layers and avoid exposed points in severe weather.",
     targets: ["titi", "huttons-shearwater", "pakaha", "takapu", "parekareka", "korora"],
   },
   {
@@ -197,7 +200,7 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.772,
     kind: "coast",
     blurb: "The cliffs beyond Scarborough hold a spectacular spotted shag colony, painted white by generations of residents. One of NZ's best urban seabird views.",
-    tips: "View from the clifftop reserve at the end of Whitewash Head Road, spring for peak colony activity. Never approach the cliff edge; the birds come and go constantly anyway.",
+    tips: "Check council access notices before visiting and use only open reserve paths near Whitewash Head Road. Cliffs are unstable: keep well back and never climb down or enter fenced land to approach the birds.",
     targets: ["parekareka", "tarapunga", "karoro", "takapu", "reef-heron"],
   },
   {
@@ -218,8 +221,8 @@ export const HOTSPOTS: Hotspot[] = [
     lat: -43.628,
     lng: 172.688,
     kind: "coast",
-    blurb: "The harbour's island reserve, reached by ferry from Lyttelton. Regenerating bush, penguin nest boxes and shag roosts around the cliffs.",
-    tips: "Take the morning ferry and walk the full circuit. Kororā use the nest boxes near the swimming beach; the clifftop track overlooks pied and spotted shag roosts.",
+    blurb: "The harbour's island reserve, reached by ferry from Lyttelton, with regenerating bush and coastal birds visible from public tracks.",
+    tips: "Book return ferry travel and check weather and DOC notices. Clean footwear, check bags for pests and leave dogs at home. Stay on open tracks, keep back from cliff edges and never approach or open penguin nest boxes; let resting birds remain undisturbed.",
     targets: ["korora", "parekareka", "karuhiruhi", "voc", "reef-heron"],
   },
   {
@@ -229,9 +232,9 @@ export const HOTSPOTS: Hotspot[] = [
     lat: -43.756,
     lng: 172.489,
     kind: "lake",
-    blurb: "A vast shallow coastal lake southwest of the city and one of NZ's most important wetlands, holding tens of thousands of birds and a rarity list to dream about.",
-    tips: "Huge and windswept, so pick your access: Lakeside Domain, Greenpark Sands or Embankment Road. Anything can turn up; scan swan and stilt flocks methodically and watch for harriers pushing waders around.",
-    targets: ["black-swan", "matuku", "puteketeke", "kaki", "pacific-golden-plover", "cattle-egret", "mute-swan", "sharp-tailed-sandpiper"],
+    blurb: "A vast shallow coastal lake southwest of Christchurch and one of NZ's most important wetlands, with large waterfowl flocks and changing shorelines.",
+    tips: "Plan a visit using signed public access such as Lakeside Domain and check local conditions first. Much of the shore is private, soft or flood-prone; the pin does not grant access across farms. Keep off roosts and heed hunting-season restrictions and warning signs.",
+    targets: ["black-swan", "puteketeke", "poaka", "kuruwhengi", "tete", "putangitangi"],
   },
   {
     id: "wairewa",
@@ -261,9 +264,17 @@ export const HOTSPOTS: Hotspot[] = [
     lng: 172.718,
     kind: "estuary",
     blurb: "The wader mecca north of the city where the Ashley river braids meet the sea. Smaller than Ihutai but with an outsized record of quality birds.",
-    tips: "Park at Waikuku Beach or the Ashley mouth and work the lagoon edges. Passage months (Feb-Mar, Aug-Sep) bring wrybill; summer brings Arctic waders; any season can bring a wandering kakī.",
-    targets: ["ngutuparore", "kaki", "kuaka", "turnstone", "whimbrel", "pohowera", "tarapirohe", "taranui"],
+    tips: "Use signed public access from Waikuku Beach and scan from established paths. Stay outside nesting protection areas and off gravel islands; do not drive on the riverbed or approach roosts. Check tides and flood warnings; summer brings migrant godwits.",
+    targets: ["kuaka", "pohowera", "sipo", "poaka", "taranui", "royal-spoonbill"],
   },
 ]
+
+// Preserve all original IDs and coordinates for saved sightings and old backups.
+export const HOTSPOTS: Hotspot[] = [
+  ...LEGACY_HOTSPOTS.map((h) => ({ ...h, region: h.region ?? "Canterbury" })),
+  ...NATIONAL_HOTSPOTS,
+]
+
+export const HOTSPOT_REGIONS = [...new Set(HOTSPOTS.map((h) => h.region).filter((r): r is string => Boolean(r)))].sort((a, b) => a.localeCompare(b, "en-NZ"))
 
 export const hotspotById = new Map(HOTSPOTS.map((h) => [h.id, h]))

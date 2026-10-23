@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useStore } from "../lib/store"
 import { HOTSPOTS, hotspotById } from "../data/hotspots"
 import { speciesById, RARITY_POINTS } from "../data/species"
@@ -31,16 +31,19 @@ export default function OutingPage() {
 
   useEffect(() => {
     if (activeOuting || !navigator.geolocation) return
+    let alive = true
     navigator.geolocation.getCurrentPosition(
-      (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => { if (alive) setPos({ lat: p.coords.latitude, lng: p.coords.longitude }) },
       () => {},
       { maximumAge: 120000, timeout: 4000 }
     )
+    return () => { alive = false }
   }, [activeOuting])
 
   const ranked = useMemo(() => {
     const list = [...HOTSPOTS]
     if (pos) list.sort((a, b) => distKm(pos.lat, pos.lng, a.lat, a.lng) - distKm(pos.lat, pos.lng, b.lat, b.lng))
+    else list.sort((a, b) => `${a.region} ${a.name}`.localeCompare(`${b.region} ${b.name}`, "en-NZ"))
     return list
   }, [pos])
 
@@ -128,15 +131,17 @@ export default function OutingPage() {
           <label className="field mt8">
             <span>Where are you headed?</span>
             <select className="input" value={hotspotId} onChange={(e) => setHotspotId(e.target.value)}>
-              <option value="">Just wandering</option>
+              <option value="">Across Aotearoa — just wandering</option>
               {ranked.map((h) => (
                 <option key={h.id} value={h.id}>
-                  {h.name}
+                  {h.name} · {h.region}
                   {pos ? ` · ${distKm(pos.lat, pos.lng, h.lat, h.lng).toFixed(1)} km` : ""}
                 </option>
               ))}
             </select>
           </label>
+          <p className="tiny">{pos ? "Places are sorted by straight-line distance, not road or ferry travel time." : "No GPS fix; choose anywhere in Aotearoa. No home region is assumed."}</p>
+          {hotspotId && <p className="muted">{hotspotById.get(hotspotId)?.tips} <Link to={`/hotspot/${hotspotId}`}>Read the access guide</Link></p>}
           <button className="btn big" onClick={begin}>
             <IconClock size={17} /> Start the clock
           </button>

@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react"
+import React from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { speciesById, RARITY_POINTS, RARITY_LABEL } from "../data/species"
-import { hotspotById } from "../data/hotspots"
+import { HOTSPOTS, hotspotById } from "../data/hotspots"
 import { useStore } from "../lib/store"
 import { PhotoImg } from "../components/PhotoImg"
 import { TopBar, RarityPill, StatusPill } from "../components/bits"
-import { getWikiInfo, pageUrlFor, nzBirdsOnlineSearch } from "../lib/photos"
+import { getPhotoCredit, pageUrlFor, nzBirdsOnlineSearch } from "../lib/photos"
 import { fmtDate, MONTH_NAMES } from "../lib/util"
 import { IconPlus, IconExternal, IconCheck } from "../components/icons"
 
@@ -14,14 +14,10 @@ export default function SpeciesDetail() {
   const nav = useNavigate()
   const { lifeList, data } = useStore()
   const sp = id ? speciesById.get(id) : undefined
-  const [wikiUrl, setWikiUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (sp) getWikiInfo(sp.wiki).then((i) => setWikiUrl(i.pageUrl))
-  }, [sp])
-
   if (!sp) return <div className="empty">That bird flew off.</div>
 
+  const photo = getPhotoCredit(sp)
+  const places = HOTSPOTS.filter((h) => h.targets.includes(sp.id) || sp.hotspots.includes(h.id))
   const first = lifeList.get(sp.id)
   const count = data.sightings.filter((s) => s.speciesId === sp.id).length
   const month = new Date().getMonth() + 1
@@ -33,10 +29,12 @@ export default function SpeciesDetail() {
 
       <div className="detail-hero">
         <PhotoImg species={sp} />
-        <a className="credit" href={wikiUrl ?? pageUrlFor(sp.wiki)} target="_blank" rel="noreferrer">
-          photo: Wikipedia
-        </a>
       </div>
+      {photo ? <p className="tiny photo-attribution">
+        Photo: <a href={photo.fileUrl} target="_blank" rel="noreferrer">{photo.artist}</a>
+        {photo.attribution !== photo.artist ? ` · ${photo.attribution}` : ""}{" · "}
+        <a href={photo.licenseUrl} target="_blank" rel="noreferrer">{photo.license}</a>. {photo.changes}
+      </p> : <p className="tiny">No verified photo is available for this entry. A silhouette is shown rather than an uncertain match.</p>}
 
       <div className="detail-title spread" style={{ alignItems: "flex-start" }}>
         <div>
@@ -94,8 +92,8 @@ export default function SpeciesDetail() {
             <span>HABITAT</span>
           </div>
           <div>
-            <b>{sp.months ? sp.months.map((m) => MONTH_NAMES[m - 1]).join(" ") : "All year"}</b>
-            <span>WHEN</span>
+            <b>{sp.months ? sp.months.map((m) => MONTH_NAMES[m - 1]).join(" ") : "See range"}</b>
+            <span>TYPICAL SEASON</span>
           </div>
         </div>
       </div>
@@ -103,6 +101,12 @@ export default function SpeciesDetail() {
       <div className="card">
         <h3>The bird</h3>
         <p className="muted mt0" style={{ marginBottom: 0 }}>{sp.desc}</p>
+      </div>
+
+      <div className="card">
+        <h3>Range in Aotearoa</h3>
+        <p className="muted mt0">{sp.range ?? "Check the linked species account for current distribution."}</p>
+        <p className="tiny" style={{ marginBottom: 0 }}>A broad range, not a sighting guarantee or permission to enter. Seasonal visitors can occur outside the listed months. Rarity labels are game-scoring categories, not national abundance or conservation assessments.</p>
       </div>
 
       <div className="card">
@@ -118,13 +122,12 @@ export default function SpeciesDetail() {
       <div className="card">
         <h3>Where to find one</h3>
         <div style={{ marginTop: 8 }}>
-          {sp.hotspots.map((hid) => {
-            const h = hotspotById.get(hid)
-            if (!h) return null
+          {places.length === 0 && <p className="muted">No public hotspot is recommended for this entry yet. Check its range and source account; some island and conservation sites require permits or are closed to visitors.</p>}
+          {places.map((h) => {
             return (
-              <Link key={hid} to={`/hotspot/${hid}`} className="row" style={{ padding: "8px 0", borderBottom: "1px solid color-mix(in srgb, var(--line) 45%, transparent)" }}>
+              <Link key={h.id} to={`/hotspot/${h.id}`} className="row" style={{ padding: "8px 0", borderBottom: "1px solid color-mix(in srgb, var(--line) 45%, transparent)" }}>
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{h.name}</span>
-                <span className="tiny">{h.kind}</span>
+                <span className="tiny">{h.region} · {h.kind}</span>
               </Link>
             )
           })}
@@ -132,10 +135,10 @@ export default function SpeciesDetail() {
       </div>
 
       <div className="row" style={{ gap: 8 }}>
-        <a className="btn ghost" style={{ flex: 1 }} href={nzBirdsOnlineSearch(sp.name)} target="_blank" rel="noreferrer">
+        <a className="btn ghost" style={{ flex: 1 }} href={sp.nzbo ?? nzBirdsOnlineSearch(sp.name)} target="_blank" rel="noreferrer">
           <IconExternal size={15} /> NZ Birds Online
         </a>
-        <a className="btn ghost" style={{ flex: 1 }} href={wikiUrl ?? pageUrlFor(sp.wiki)} target="_blank" rel="noreferrer">
+        <a className="btn ghost" style={{ flex: 1 }} href={pageUrlFor(sp.wiki)} target="_blank" rel="noreferrer">
           <IconExternal size={15} /> Wikipedia
         </a>
       </div>

@@ -1,29 +1,36 @@
-import React, { useRef, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useStore } from "../lib/store"
 import { TopBar, useToast } from "../components/bits"
+import { BackupPanel } from "../components/BackupPanel"
 import { toEbirdCSV, downloadFile } from "../lib/csv"
-import { IconDownload, IconUpload, IconTrash } from "../components/icons"
+import { IconDownload, IconTrash } from "../components/icons"
 
 export default function Settings() {
-  const { data, updateSettings, exportJSON, importData, loadDemo, resetAll } = useStore()
+  const { data, updateSettings, loadDemo, resetAll } = useStore()
   const toast = useToast()
-  const fileRef = useRef<HTMLInputElement>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [home, setHome] = useState({ lat: String(data.settings.homeLat), lng: String(data.settings.homeLng) })
+  const [homeMessage, setHomeMessage] = useState("")
+  useEffect(() => {
+    setHome({ lat: String(data.settings.homeLat), lng: String(data.settings.homeLng) })
+  }, [data.settings.homeLat, data.settings.homeLng])
 
-  function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    f.text().then((raw) => {
-      const res = importData(raw)
-      toast(res.message, res.ok)
-    })
-    e.target.value = ""
+  function saveHome() {
+    const lat = Number(home.lat), lng = Number(home.lng)
+    if (!home.lat.trim() || !home.lng.trim() || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setHomeMessage("Enter a valid latitude (−90 to 90) and longitude (−180 to 180). Your saved home has not changed.")
+      return
+    }
+    updateSettings({ homeLat: lat, homeLng: lng })
+    setHomeMessage("Home location saved for nearby eBird reports.")
   }
 
   return (
     <div className="fade-in">
       <TopBar title="Settings" />
+
+      <BackupPanel />
 
       <div className="card">
         <h3>You</h3>
@@ -57,6 +64,10 @@ export default function Settings() {
         </p>
         <input
           className="input"
+          type="password"
+          aria-label="eBird API key"
+          autoComplete="off"
+          spellCheck={false}
           placeholder="eBird API key"
           value={data.settings.ebirdKey}
           onChange={(e) => updateSettings({ ebirdKey: e.target.value.trim() })}
@@ -64,21 +75,27 @@ export default function Settings() {
       </div>
 
       <div className="card">
+        <h3>Home location for nearby reports</h3>
+        <p className="muted" style={{ fontSize: 13 }}>Use decimal degrees. Older backups retain the Christchurch default; choose your intended location here or use device location on Alerts. This does not restrict the guide or map.</p>
+        <label className="field">
+          <span>Latitude</span>
+          <input className="input" type="number" step="any" min={-90} max={90} value={home.lat} onChange={(e) => setHome({ ...home, lat: e.target.value })} />
+        </label>
+        <label className="field">
+          <span>Longitude</span>
+          <input className="input" type="number" step="any" min={-180} max={180} value={home.lng} onChange={(e) => setHome({ ...home, lng: e.target.value })} />
+        </label>
+        <button className="btn ghost small" onClick={saveHome}>Save home location</button>
+        {homeMessage && <p className="tiny" role="status">{homeMessage}</p>}
+      </div>
+
+      <div className="card">
         <h3>Your data</h3>
         <p className="muted mt0" style={{ fontSize: 13 }}>
           Everything lives on this device. Export a backup before switching phones, or export CSV to import into your
-          real eBird account.
+          real eBird account. GPS-only records leave province blank rather than guessing. Review location and taxonomy before uploading; eBird may use different names.
         </p>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          <button
-            className="btn ghost small"
-            onClick={() => {
-              downloadFile(`southwing-backup-${new Date().toISOString().slice(0, 10)}.json`, exportJSON(), "application/json")
-              toast("Backup downloaded")
-            }}
-          >
-            <IconDownload size={15} /> Backup (JSON)
-          </button>
           <button
             className="btn ghost small"
             onClick={() => {
@@ -89,10 +106,6 @@ export default function Settings() {
           >
             <IconDownload size={15} /> eBird CSV
           </button>
-          <button className="btn ghost small" onClick={() => fileRef.current?.click()}>
-            <IconUpload size={15} /> Restore backup
-          </button>
-          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={onImportFile} />
         </div>
       </div>
 
