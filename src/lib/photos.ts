@@ -1,96 +1,116 @@
-import localforage from "localforage"
+import manifest from "../data/photos.json"
+import type { Species } from "../types"
 
-/**
- * Bird photos come from each species' Wikipedia article via the MediaWiki
- * Action API (the CORS-safe `origin=*` endpoint, designed for browser use).
- * Requests are batched (up to 50 titles per call) and results are cached in
- * IndexedDB so repeat visits and offline use are instant.
- */
+export interface PhotoSource {
+  provider: string
+  requestedTitle: string
+  articleTitle: string | null
+  articleUrl: string | null
+  articleRevision: number | null
+  wikidataId: string | null
+  wikidataRevision: number | null
+  articleTaxonNames: string[]
+  articleEvidence: string
+  discovery: string
+  taxonEvidence: { field: string; term: string }[]
+  review: { note: string; reviewedOn: string; evidenceUrls: string[] } | null
+  checkedAt: string
+  visuallyReviewed: boolean
+  commonsPageId?: number
+  commonsRevision?: number
+  fileSha1?: string
+  fileTimestamp?: string
+  thumbnailWidth?: number
+  thumbnailHeight?: number
+  imageCheckedAt?: string
+  network?: { status: number; contentType: string; bytes: number; sha256: string }
+}
 
-const cache = localforage.createInstance({ name: "southwing-photos" })
+export interface LicensedPhoto {
+  status: "verified"
+  speciesId: string
+  scientificName: string
+  url: string
+  fileUrl: string
+  fileTitle: string
+  artist: string
+  attribution: string
+  credit: string
+  license: string
+  licenseUrl: string
+  changes: string
+  source: PhotoSource
+}
+
+export interface UnavailablePhoto {
+  status: "unavailable"
+  speciesId: string
+  scientificName: string
+  reason: string
+  candidateFile: string | null
+  source: PhotoSource
+}
+
+export type PhotoRecord = LicensedPhoto | UnavailablePhoto
+type SpeciesIdentity = Pick<Species, "id" | "sci">
+
+/** Build-time reviewed metadata only. Old IndexedDB Wikipedia thumbnails are intentionally ignored. */
+export const PHOTO_MANIFEST: Readonly<Record<string, PhotoRecord>> = manifest.photos as Record<string, PhotoRecord>
+
+export function isSafePhotoUrl(value: string, kind: "image" | "file" | "license"): boolean {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return false
+    if (kind === "image") return ["upload.wikimedia.org", "thumb.wikimedia.org"].includes(url.hostname) && url.pathname.startsWith("/wikipedia/commons/")
+    if (kind === "file") return url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")
+    return url.hostname === "creativecommons.org" && /^\/(licenses\/(by|by-sa)\/(1\.0|2\.0|2\.5|3\.0|4\.0)(\/[a-z-]+)?|publicdomain\/(zero|mark)\/1\.0)\/?$/.test(url.pathname)
+  } catch { return false }
+}
+
+function verified(record?: PhotoRecord): LicensedPhoto | null {
+  if (!record || record.status !== "verified" || !record.artist || !record.attribution || !record.license) return null
+  return isSafePhotoUrl(record.url, "image") && isSafePhotoUrl(record.fileUrl, "file") && isSafePhotoUrl(record.licenseUrl, "license") ? record : null
+}
+
+/** Synchronous, ID-keyed lookup. Scientific-name drift fails closed until the manifest is reviewed. */
+export function getSpeciesPhoto(species: SpeciesIdentity): LicensedPhoto | null {
+  const record = Object.hasOwnProperty.call(PHOTO_MANIFEST, species.id) ? PHOTO_MANIFEST[species.id] : undefined
+  return record?.scientificName === species.sci ? verified(record) : null
+}
+
+/** Full plain-text credits, file-page link and licence link for the detail page. */
+export function getPhotoCredit(species: SpeciesIdentity): LicensedPhoto | null {
+  return getSpeciesPhoto(species)
+}
+
+const titleKey = (title: string) => title.replace(/_/g, " ").trim().toLocaleLowerCase("en")
+const byTitle = new Map<string, PhotoRecord[]>()
+for (const photo of Object.values(PHOTO_MANIFEST)) {
+  const key = titleKey(photo.source.requestedTitle)
+  byTitle.set(key, [...(byTitle.get(key) ?? []), photo])
+}
+
+function lookup(input: string | Species): LicensedPhoto | null {
+  if (typeof input !== "string") return getSpeciesPhoto(input)
+  const entries = byTitle.get(titleKey(input))
+  // Do not guess between species sharing an article, or accept an unknown/broader redirect.
+  return entries?.length === 1 ? verified(entries[0]) : null
+}
 
 export interface WikiInfo {
   thumb: string | null
   pageUrl: string | null
+  credit: LicensedPhoto | null
 }
 
-interface Waiter {
-  resolve: (thumb: string | null) => void
-  promise: Promise<string | null>
+/** Backwards-compatible Promise APIs; these never fetch third-party metadata at runtime. */
+export async function getWikiInfo(input: string | Species): Promise<WikiInfo> {
+  const photo = lookup(input)
+  return { thumb: photo?.url ?? null, pageUrl: pageUrlFor(typeof input === "string" ? input : input.wiki), credit: photo }
 }
 
-const pending = new Map<string, Waiter>()
-let flushTimer: number | undefined
-
-function enqueue(title: string): Promise<string | null> {
-  const existing = pending.get(title)
-  if (existing) return existing.promise
-  let resolve!: (t: string | null) => void
-  const promise = new Promise<string | null>((r) => {
-    resolve = r
-  })
-  pending.set(title, { resolve, promise })
-  if (flushTimer === undefined) flushTimer = window.setTimeout(flush, 40)
-  return promise
-}
-
-async function flush(): Promise<void> {
-  flushTimer = undefined
-  const batch = Array.from(pending.entries()).slice(0, 50)
-  for (const [t] of batch) pending.delete(t)
-  if (pending.size > 0) flushTimer = window.setTimeout(flush, 40)
-
-  const titles = batch.map(([t]) => t)
-  const results = new Map<string, string | null>()
-  try {
-    const url =
-      "https://en.wikipedia.org/w/api.php" +
-      "?action=query&format=json&formatversion=2&origin=*&redirects=1" +
-      "&prop=pageimages&piprop=thumbnail&pithumbsize=640" +
-      "&titles=" +
-      encodeURIComponent(titles.join("|"))
-    const res = await fetch(url)
-    if (res.ok) {
-      const json = await res.json()
-      const q = json?.query
-      const normalized = new Map<string, string>()
-      for (const n of q?.normalized ?? []) normalized.set(n.from, n.to)
-      const redirects = new Map<string, string>()
-      for (const r of q?.redirects ?? []) redirects.set(r.from, r.to)
-      const thumbs = new Map<string, string | null>()
-      for (const p of q?.pages ?? []) thumbs.set(p.title, p?.thumbnail?.source ?? null)
-      for (const t of titles) {
-        let final = normalized.get(t) ?? t
-        for (let hop = 0; hop < 3 && redirects.has(final); hop++) final = redirects.get(final)!
-        results.set(t, thumbs.get(final) ?? null)
-      }
-    }
-  } catch {
-    // offline or blocked: resolve everyone with null, but cache nothing
-  }
-
-  for (const [title, waiter] of batch) {
-    if (results.has(title)) {
-      // definitive answer from the API (photo URL, or confirmed no image)
-      const info: WikiInfo = { thumb: results.get(title) ?? null, pageUrl: pageUrlFor(title) }
-      void cache.setItem(`wiki2:${title}`, info)
-      waiter.resolve(info.thumb)
-    } else {
-      waiter.resolve(null)
-    }
-  }
-}
-
-export async function getWikiInfo(wikiTitle: string): Promise<WikiInfo> {
-  const stored = await cache.getItem<WikiInfo>(`wiki2:${wikiTitle}`)
-  if (stored) return stored
-  const thumb = await enqueue(wikiTitle)
-  return { thumb, pageUrl: pageUrlFor(wikiTitle) }
-}
-
-export async function getPhoto(wikiTitle: string): Promise<string | null> {
-  const info = await getWikiInfo(wikiTitle)
-  return info.thumb
+export async function getPhoto(input: string | Species): Promise<string | null> {
+  return lookup(input)?.url ?? null
 }
 
 export function pageUrlFor(wikiTitle: string): string {

@@ -7,6 +7,7 @@ import { speciesById } from "../data/species"
 import { hotspotById } from "../data/hotspots"
 import { PhotoImg } from "../components/PhotoImg"
 import { SpeciesRow } from "../components/bits"
+import { BackupPanel } from "../components/BackupPanel"
 import { Logo, IconFlame, IconTarget, IconQuiz, IconBell, IconTrophy, IconBinoculars, IconSettings } from "../components/icons"
 
 export default function Home() {
@@ -28,7 +29,7 @@ export default function Home() {
           <Logo />
           <div className="t">
             <b>Southwing</b>
-            <span>Birding Ōtautahi Christchurch</span>
+            <span>Birding Aotearoa New Zealand</span>
           </div>
         </div>
         <button className="back" onClick={() => nav("/settings")} aria-label="Settings">
@@ -40,7 +41,7 @@ export default function Home() {
         <div className="hi">{greeting(data.settings.name || undefined)}</div>
         <div className="sub">
           {empty
-            ? "The city has around 87 species waiting for you."
+            ? `Explore ${TOTAL_SPECIES} species across Aotearoa New Zealand.`
             : `Level ${level.idx + 1} · ${level.name}. ${level.note}.`}
         </div>
         <div className="hero-stats">
@@ -65,11 +66,13 @@ export default function Home() {
         </div>
       </div>
 
+      <BackupPanel />
+
       {empty && (
         <div className="card">
           <h2>Kia ora, new birder</h2>
           <p className="muted" style={{ marginTop: 4 }}>
-            Southwing is your field guide, notebook and life list for Christchurch. Find a bird, tap the big green
+            Southwing is your field guide, notebook and life list for Aotearoa New Zealand. Find a bird, tap the big green
             button, and the obsession takes care of itself.
           </p>
           <div className="row mt16" style={{ gap: 8 }}>
@@ -101,7 +104,7 @@ export default function Home() {
             </div>
             <h3 style={{ margin: 0 }}>{daily.species.name}</h3>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-              Best bet: {daily.hotspotName}
+              Explore: {daily.hotspotName}
             </div>
           </div>
         </div>

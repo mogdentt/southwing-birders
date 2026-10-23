@@ -1,6 +1,6 @@
 import React, { useMemo } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { hotspotById } from "../data/hotspots"
+import { hotspotById, HOTSPOT_VISITOR_LINKS } from "../data/hotspots"
 import { speciesById } from "../data/species"
 import { useStore } from "../lib/store"
 import { TopBar, SpeciesRow } from "../components/bits"
@@ -44,6 +44,7 @@ export default function HotspotDetail() {
           {h.name}
         </div>
         {h.maori && h.maori !== h.name ? <div className="sub">{h.maori}</div> : null}
+        <div className="sub">{h.region} · {h.kind}</div>
         <div className="hero-stats">
           <div className="hero-stat">
             <b>{targets.length}</b>
@@ -81,13 +82,20 @@ export default function HotspotDetail() {
       </div>
 
       <div className="card fact-card">
-        <h3>Field craft</h3>
+        <h3>Access & field craft</h3>
         <p className="mt0" style={{ marginBottom: 0, fontSize: 14 }}>{h.tips}</p>
+        {HOTSPOT_VISITOR_LINKS[h.id] && <p className="mb0"><a href={HOTSPOT_VISITOR_LINKS[h.id]} target="_blank" rel="noreferrer">Visitor information & current access <IconExternal size={13} /></a></p>}
+      </div>
+
+      <div className="card">
+        <h3>Visit with care</h3>
+        <p className="muted mt0" style={{ marginBottom: 0 }}>Pins are approximate access or viewing points, not nest locations or a guarantee of entry. Check current land-manager notices, tides and weather. Book transport or permits where required; directions do not establish public access. Stay on open tracks, respect private land and nesting fences, keep your distance and avoid playback, feeding or disturbing birds.</p>
       </div>
 
       <div className="section-title">
-        <h2>Birds to chase here</h2>
+        <h2>Birds to look for</h2>
       </div>
+      <p className="tiny">A selection of possible birds, not guaranteed sightings. Season, tide and habitat matter.</p>
       <div className="card" style={{ padding: 6 }}>
         {targets.map((sp) => (
           <SpeciesRow key={sp.id} sp={sp} seen={lifeList.has(sp.id)} />

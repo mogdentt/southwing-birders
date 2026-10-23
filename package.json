@@ -2,13 +2,20 @@
   "name": "southwing-birders",
   "private": true,
   "version": "0.1.0",
-  "description": "Southwing, a birding companion for Ōtautahi Christchurch",
+  "description": "Southwing, a birding companion for Aotearoa New Zealand",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test": "vitest run",
+    "test:browser": "node scripts/check-browser.mjs",
+    "photos:sync": "node scripts/sync-photos.mjs",
+    "photos:check": "node scripts/sync-photos.mjs --check"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.3",
@@ -16,18 +23,19 @@
     "localforage": "^1.10.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.0"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
     "@types/leaflet": "^1.9.12",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^4.7.0",
     "playwright": "^1.62.1",
-    "sharp": "^0.33.5",
+    "sharp": "^0.35.5",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
-    "vite-plugin-pwa": "^0.21.1"
+    "vite": "^6.4.5",
+    "vite-plugin-pwa": "^0.21.2",
+    "vitest": "^4.1.12"
   }
 }

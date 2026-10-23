@@ -5,6 +5,7 @@ import { PhotoImg } from "../components/PhotoImg"
 import { TopBar } from "../components/bits"
 import { celebrateSmall } from "../lib/celebrate"
 import type { Species } from "../types"
+import { getSpeciesPhoto } from "../lib/photos"
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -16,7 +17,8 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 function makeQuestion(exclude?: string): { answer: Species; options: Species[] } {
-  const pool = SPECIES.filter((s) => s.id !== exclude)
+  // Do not ask users to identify an unavailable image or a downy chick.
+  const pool = SPECIES.filter((s) => s.id !== exclude && s.id !== "magenta-petrel" && getSpeciesPhoto(s))
   const answer = pool[Math.floor(Math.random() * pool.length)]
   const sameGroup = shuffle(pool.filter((s) => s.group === answer.group && s.id !== answer.id)).slice(0, 2)
   const others = shuffle(pool.filter((s) => s.id !== answer.id && !sameGroup.includes(s))).slice(0, 3 - sameGroup.length)
@@ -31,10 +33,11 @@ export default function Quiz() {
   const [score, setScore] = useState(0)
   const [total, setTotal] = useState(0)
   const [streak, setStreak] = useState(0)
+  const [photoReady, setPhotoReady] = useState(false)
 
   const answerNow = useCallback(
     (id: string) => {
-      if (picked) return
+      if (picked || !photoReady) return
       setPicked(id)
       const correct = id === q.answer.id
       const nextStreak = correct ? streak + 1 : 0
@@ -44,10 +47,11 @@ export default function Quiz() {
       recordQuiz(correct, nextStreak)
       if (correct && nextStreak > 0 && nextStreak % 5 === 0) celebrateSmall()
     },
-    [picked, q.answer.id, streak, recordQuiz]
+    [picked, photoReady, q.answer.id, streak, recordQuiz]
   )
 
   const next = useCallback(() => {
+    setPhotoReady(false)
     setQ(makeQuestion(q.answer.id))
     setPicked(null)
   }, [q.answer.id])
@@ -76,8 +80,12 @@ export default function Quiz() {
       </div>
 
       <div className="quiz-photo">
-        <PhotoImg species={q.answer} />
+        <PhotoImg species={q.answer} quiz onReady={setPhotoReady} />
       </div>
+      {!photoReady && <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+        <span className="tiny" role="status">Waiting for the photo. If it is unavailable, skip without affecting your score.</span>
+        <button className="btn ghost small" onClick={next}>Skip photo</button>
+      </div>}
       {!online && (
         <p className="tiny" style={{ textAlign: "center", marginTop: -8 }}>
           Offline: photos may not load until you have signal.
@@ -92,7 +100,7 @@ export default function Quiz() {
             else if (op.id === picked) cls += " wrong"
           }
           return (
-            <button key={op.id} className={cls} disabled={!!picked} onClick={() => answerNow(op.id)}>
+            <button key={op.id} className={cls} disabled={!!picked || !photoReady} onClick={() => answerNow(op.id)}>
               {op.name}
               {op.maori && op.maori !== op.name ? <span className="tiny"> · {op.maori}</span> : null}
             </button>
